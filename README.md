@@ -12,4 +12,6 @@ The default keybind to open the menu is **F**. This keybind is customizable in b
 - Other Features
 
 ## Community
-Join the [Official Malik Utils Discord Server](https://discord.gg/FJbsfxsbWb) for announcements and more
+Join the [Scarlet Utils Server, original project](https://discord.gg/FJbsfxsbWb) for announcements and more
+
+Unfortunately there isn't going to be a official discord server for the utils yet. Please open an issue in GitHub instead.
