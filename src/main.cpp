@@ -146,8 +146,17 @@ $on_mod(Loaded) {
         fontSize);
         ImGui::GetIO().FontDefault = font;
       }).draw([&] {
-        if (!menuVisible)
+        // open/close animation (frame-rate independent, ease-out)
+        static float openAnim = 0.f;
+        const float dt = ImGui::GetIO().DeltaTime;
+        {
+          const float step = dt / 0.18f;
+          openAnim = menuVisible ? std::min(1.f, openAnim + step)
+                                 : std::max(0.f, openAnim - step);
+        }
+        if (!menuVisible && openAnim <= 0.f)
           return;
+        const float openE = 1.f - (1.f - openAnim) * (1.f - openAnim) * (1.f - openAnim);
 
         ImGuiStyle &style = ImGui::GetStyle();
 
@@ -183,7 +192,7 @@ $on_mod(Loaded) {
 
         style.Colors[ImGuiCol_Text] = ImVec4(0.8583691f, 0.8583605f, 0.8583605f, 1.0f);
         style.Colors[ImGuiCol_TextDisabled] = ImVec4(0.49803922f, 0.49803922f, 0.49803922f, 1.0f);
-        style.Colors[ImGuiCol_WindowBg] = ImVec4(0.09803922f, 0.09803922f, 0.09803922f, 0.55f);
+        style.Colors[ImGuiCol_WindowBg] = ImVec4(0.09803922f, 0.09803922f, 0.09803922f, 0.50f);
         style.Colors[ImGuiCol_ChildBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
         style.Colors[ImGuiCol_PopupBg] = ImVec4(0.09803922f, 0.09803922f, 0.09803922f, 1.0f);
         style.Colors[ImGuiCol_Border] = ImVec4(0.1882353f, 0.1882353f, 0.1882353f, 0.5f);
@@ -263,7 +272,7 @@ $on_mod(Loaded) {
         }
 
         auto edgesAt = [&](ImVec2 m) -> int {
-          if (!haveRect) return 0;
+          if (!haveRect || !menuVisible) return 0;
           const float t = fs * 0.6f, out = 4.f;
           float l = curPos.x, r = curPos.x + curSize.x;
           float tp = curPos.y, b = curPos.y + curSize.y;
@@ -293,7 +302,7 @@ $on_mod(Loaded) {
         }
 
         if (resizeEdges) {
-          if (!io.MouseDown[0]) {
+          if (!menuVisible || !io.MouseDown[0]) {
             resizeEdges = 0;
           } else {
             float dx = io.MousePos.x - rsMouse.x, dy = io.MousePos.y - rsMouse.y;
@@ -316,15 +325,28 @@ $on_mod(Loaded) {
           ImGui::SetMouseCursor(c);
         }
 
+        // scale-in/out while opening or closing (logical rect stays untouched)
+        const bool scaling = haveRect && openAnim < 1.f && resizeEdges == 0;
+        if (scaling) {
+          const float sc = 0.94f + 0.06f * openE;
+          ImVec2 ns(curSize.x * sc, curSize.y * sc);
+          ImGui::SetNextWindowPos(ImVec2(curPos.x + (curSize.x - ns.x) * 0.5f,
+                                         curPos.y + (curSize.y - ns.y) * 0.5f),
+                                  ImGuiCond_Always);
+          ImGui::SetNextWindowSize(ns, ImGuiCond_Always);
+        }
+
         ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse |
                                  ImGuiWindowFlags_NoResize |
                                  ImGuiWindowFlags_NoSavedSettings;
         if (activeEdges) flags |= ImGuiWindowFlags_NoMove;
+        if (!menuVisible) flags |= ImGuiWindowFlags_NoInputs;
 
+        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, openE);
         ImGui::Begin("Malik Utils", nullptr, flags);
 
         // keep the title bar reachable
-        {
+        if (!scaling) {
           ImVec2 p = ImGui::GetWindowPos(), sz = ImGui::GetWindowSize();
           ImVec2 cp(std::max(-(sz.x - 60.f), std::min(p.x, io.DisplaySize.x - 60.f)),
                     std::max(0.f, std::min(p.y, io.DisplaySize.y - 40.f)));
@@ -337,21 +359,29 @@ $on_mod(Loaded) {
           haveRect = true;
         }
 
-        // accent color only on the side(s) being resized
+        // accent color only on the side(s) being resized (short fade)
+        static int shownEdges = 0;
+        static float edgeA = 0.f;
         if (resizeEdges) {
+          shownEdges = resizeEdges;
+          edgeA = std::min(1.f, edgeA + dt / 0.08f);
+        } else {
+          edgeA = std::max(0.f, edgeA - dt / 0.12f);
+        }
+        if (edgeA > 0.f) {
           ImDrawList *dl = ImGui::GetForegroundDrawList();
           const float th = std::max(2.f, fs * 0.15f);
-          ImU32 col = ImGui::GetColorU32(accent);
+          ImU32 col = ImGui::GetColorU32(ImVec4(accent.x, accent.y, accent.z, edgeA * openE));
           float l = curPos.x, r = curPos.x + curSize.x;
           float t = curPos.y, b = curPos.y + curSize.y;
-          if (resizeEdges & 1) dl->AddRectFilled(ImVec2(l, t), ImVec2(l + th, b), col);
-          if (resizeEdges & 2) dl->AddRectFilled(ImVec2(r - th, t), ImVec2(r, b), col);
-          if (resizeEdges & 4) dl->AddRectFilled(ImVec2(l, t), ImVec2(r, t + th), col);
-          if (resizeEdges & 8) dl->AddRectFilled(ImVec2(l, b - th), ImVec2(r, b), col);
+          if (shownEdges & 1) dl->AddRectFilled(ImVec2(l, t), ImVec2(l + th, b), col);
+          if (shownEdges & 2) dl->AddRectFilled(ImVec2(r - th, t), ImVec2(r, b), col);
+          if (shownEdges & 4) dl->AddRectFilled(ImVec2(l, t), ImVec2(r, t + th), col);
+          if (shownEdges & 8) dl->AddRectFilled(ImVec2(l, b - th), ImVec2(r, b), col);
         }
 
         // persist position/size when a drag/resize ends
-        if (ImGui::IsMouseReleased(0)) {
+        if (!scaling && ImGui::IsMouseReleased(0)) {
           auto *m = Mod::get();
           if (m->getSavedValue<float>("menuX", -1.f) != curPos.x ||
               m->getSavedValue<float>("menuY", -1.f) != curPos.y ||
@@ -364,8 +394,22 @@ $on_mod(Loaded) {
           }
         }
 
+        static int lastTab = -1;
+        static float tabT = 1.f;
+        tabT = std::min(1.f, tabT + dt / 0.15f);
+        float tabE = 1.f - (1.f - tabT) * (1.f - tabT) * (1.f - tabT);
+        auto tabBegin = [&](int idx) {
+          if (lastTab != idx) {
+            lastTab = idx;
+            tabT = 0.f;
+            tabE = 0.f;
+          }
+          ImGui::PushStyleVar(ImGuiStyleVar_Alpha, openE * tabE);
+        };
+
         if (ImGui::BeginTabBar("main")) {
           if (ImGui::BeginTabItem("Gameplay")) {
+            tabBegin(0);
 
             ImGui::Checkbox("Flip Input On Death", &flipOnDeath);
             if (ImGui::IsItemHovered()) {
@@ -599,10 +643,12 @@ $on_mod(Loaded) {
               ImGui::InputInt("Amount##extraclicks", &extraClickAmount, 0, 0);
               ImGui::EndPopup();
             }
+            ImGui::PopStyleVar();
             ImGui::EndTabItem();
           }
 
           if (ImGui::BeginTabItem("Visual")) {
+            tabBegin(1);
             #ifndef GEODE_IS_ANDROID
             ImGui::Checkbox("Level Fade In/Out", &fadeLevel);
             if (ImGui::IsItemEdited()) {
@@ -755,10 +801,12 @@ $on_mod(Loaded) {
             if (ImGui::IsItemEdited()) {
               Mod::get()->setSavedValue<bool>("optimizeStackedOrbs", optimizeStackedOrbs);
             }
+            ImGui::PopStyleVar();
             ImGui::EndTabItem();
           }
           ImGui::EndTabBar();
         }
         ImGui::End();
+        ImGui::PopStyleVar();
       });
 }
