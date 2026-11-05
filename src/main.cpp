@@ -126,7 +126,7 @@ std::unordered_set<int> filter = {2015, 15, 16, 17, 221, 743, 744, 899, 900, 915
 
 $on_mod(Loaded) {
   listenForKeybindSettingPresses(
-  "scarlet.utils/menu",
+  "menu",
   [](Keybind const &keybind, bool down, bool repeat, double timestamp) {
     if (down && !repeat)
       menuVisible = !menuVisible;
@@ -235,9 +235,134 @@ $on_mod(Loaded) {
         style.Colors[ImGuiCol_NavWindowingDimBg] = ImVec4(1e-6f, 5.9227466e-7f, 5.9227466e-7f, 0.2f);
         style.Colors[ImGuiCol_ModalWindowDimBg] = ImVec4(1e-6f, 5.751073e-7f, 5.751073e-7f, 0.35f);
 
-        ImGui::Begin("Scarlet Utils", nullptr,
-                    ImGuiWindowFlags_NoCollapse |
-                    ImGuiWindowFlags_AlwaysAutoResize);
+        // ---- draggable + side-resizable window ----
+        ImGuiIO &io = ImGui::GetIO();
+        static ImVec2 curPos, curSize, rsMouse, rsPos, rsSize;
+        static bool haveRect = false, inited = false;
+        static int resizeEdges = 0, hoverEdges = 0; // bits: 1=L 2=R 4=T 8=B
+        const ImVec4 accent = ImVec4(0.7424893f, 0.14658587f, 0.2540021f, 1.0f);
+        const float fs = ImGui::GetFontSize();
+        const ImVec2 minSize(fs * 11.f, fs * 6.f);
+
+        if (!inited) {
+          inited = true;
+          float sw = Mod::get()->getSavedValue<float>("menuW", 0.f);
+          float sh = Mod::get()->getSavedValue<float>("menuH", 0.f);
+          float sx = Mod::get()->getSavedValue<float>("menuX", 0.f);
+          float sy = Mod::get()->getSavedValue<float>("menuY", 0.f);
+          if (sw <= 0.f || sh <= 0.f) {
+            sw = std::min(fs * 24.f, io.DisplaySize.x * 0.9f);
+            sh = std::min(fs * 19.f, io.DisplaySize.y * 0.9f);
+            sx = (io.DisplaySize.x - sw) * 0.5f;
+            sy = (io.DisplaySize.y - sh) * 0.5f;
+          }
+          sw = std::max(minSize.x, std::min(sw, io.DisplaySize.x));
+          sh = std::max(minSize.y, std::min(sh, io.DisplaySize.y));
+          ImGui::SetNextWindowPos(ImVec2(sx, sy));
+          ImGui::SetNextWindowSize(ImVec2(sw, sh));
+        }
+
+        auto edgesAt = [&](ImVec2 m) -> int {
+          if (!haveRect) return 0;
+          const float t = fs * 0.6f, out = 4.f;
+          float l = curPos.x, r = curPos.x + curSize.x;
+          float tp = curPos.y, b = curPos.y + curSize.y;
+          if (m.x < l - out || m.x > r + out || m.y < tp - out || m.y > b + out) return 0;
+          int e = 0;
+          if (m.x < l + t) e |= 1;
+          if (m.x > r - t) e |= 2;
+          if (m.y < tp + t) e |= 4;
+          if (m.y > b - t) e |= 8;
+          return e;
+        };
+
+        if (resizeEdges == 0) {
+          if (!io.MouseDown[0]) {
+            hoverEdges = edgesAt(io.MousePos);
+          } else if (ImGui::IsMouseClicked(0)) {
+            hoverEdges = edgesAt(io.MousePos);
+            if (hoverEdges) {
+              resizeEdges = hoverEdges;
+              rsMouse = io.MousePos;
+              rsPos = curPos;
+              rsSize = curSize;
+            }
+          } else {
+            hoverEdges = 0; // a drag that started elsewhere
+          }
+        }
+
+        if (resizeEdges) {
+          if (!io.MouseDown[0]) {
+            resizeEdges = 0;
+          } else {
+            float dx = io.MousePos.x - rsMouse.x, dy = io.MousePos.y - rsMouse.y;
+            float x = rsPos.x, y = rsPos.y, w = rsSize.x, h = rsSize.y;
+            if (resizeEdges & 1) { w = std::max(minSize.x, rsSize.x - dx); x = rsPos.x + rsSize.x - w; }
+            if (resizeEdges & 2) { w = std::max(minSize.x, rsSize.x + dx); }
+            if (resizeEdges & 4) { h = std::max(minSize.y, rsSize.y - dy); y = rsPos.y + rsSize.y - h; }
+            if (resizeEdges & 8) { h = std::max(minSize.y, rsSize.y + dy); }
+            ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Always);
+          }
+        }
+
+        int activeEdges = resizeEdges ? resizeEdges : hoverEdges;
+        if (activeEdges) {
+          ImGuiMouseCursor c = ImGuiMouseCursor_ResizeEW;
+          if (activeEdges == 4 || activeEdges == 8) c = ImGuiMouseCursor_ResizeNS;
+          else if (activeEdges == 5 || activeEdges == 10) c = ImGuiMouseCursor_ResizeNWSE;
+          else if (activeEdges == 6 || activeEdges == 9) c = ImGuiMouseCursor_ResizeNESW;
+          ImGui::SetMouseCursor(c);
+        }
+
+        ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse |
+                                 ImGuiWindowFlags_NoResize |
+                                 ImGuiWindowFlags_NoSavedSettings;
+        if (activeEdges) flags |= ImGuiWindowFlags_NoMove;
+
+        ImGui::Begin("Malik Utils", nullptr, flags);
+
+        // keep the title bar reachable
+        {
+          ImVec2 p = ImGui::GetWindowPos(), sz = ImGui::GetWindowSize();
+          ImVec2 cp(std::max(-(sz.x - 60.f), std::min(p.x, io.DisplaySize.x - 60.f)),
+                    std::max(0.f, std::min(p.y, io.DisplaySize.y - 40.f)));
+          if (cp.x != p.x || cp.y != p.y) {
+            ImGui::SetWindowPos(cp);
+            p = cp;
+          }
+          curPos = p;
+          curSize = sz;
+          haveRect = true;
+        }
+
+        // accent color only on the side(s) being resized
+        if (resizeEdges) {
+          ImDrawList *dl = ImGui::GetForegroundDrawList();
+          const float th = std::max(2.f, fs * 0.15f);
+          ImU32 col = ImGui::GetColorU32(accent);
+          float l = curPos.x, r = curPos.x + curSize.x;
+          float t = curPos.y, b = curPos.y + curSize.y;
+          if (resizeEdges & 1) dl->AddRectFilled(ImVec2(l, t), ImVec2(l + th, b), col);
+          if (resizeEdges & 2) dl->AddRectFilled(ImVec2(r - th, t), ImVec2(r, b), col);
+          if (resizeEdges & 4) dl->AddRectFilled(ImVec2(l, t), ImVec2(r, t + th), col);
+          if (resizeEdges & 8) dl->AddRectFilled(ImVec2(l, b - th), ImVec2(r, b), col);
+        }
+
+        // persist position/size when a drag/resize ends
+        if (ImGui::IsMouseReleased(0)) {
+          auto *m = Mod::get();
+          if (m->getSavedValue<float>("menuX", -1.f) != curPos.x ||
+              m->getSavedValue<float>("menuY", -1.f) != curPos.y ||
+              m->getSavedValue<float>("menuW", -1.f) != curSize.x ||
+              m->getSavedValue<float>("menuH", -1.f) != curSize.y) {
+            m->setSavedValue<float>("menuX", curPos.x);
+            m->setSavedValue<float>("menuY", curPos.y);
+            m->setSavedValue<float>("menuW", curSize.x);
+            m->setSavedValue<float>("menuH", curSize.y);
+          }
+        }
 
         if (ImGui::BeginTabBar("main")) {
           if (ImGui::BeginTabItem("Gameplay")) {
