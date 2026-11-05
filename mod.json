@@ -6,10 +6,10 @@
 		"mac": "2.2081",
 		"ios": "2.2081"
 	},
-	"id": "scarlet.utils",
-	"name": "Scarlet Utils",
+	"id": "itzmalikhere.malik-utils",
+	"name": "Malik Utils",
 	"version": "v2.5.1",
-	"developer": "scarlet",
+	"developer": "itzmalikhere",
 	"description": "Tools for botting and showcasing.",
 	"tags": ["cheat","gameplay","utility"],
 	"links": {
@@ -17,11 +17,10 @@
 		"source": "https://github.com/Mefistic/scarletutils"
 	},
 	"settings": {
-		"scarlet.utils/menu": {
+		"menu": {
 			"name": "Show Menu",
 			"type": "keybind",
 			"default": "F",
-			"migrate-from": "scarlet.utils/menu",
 			"category": "universal"
 		}
 	},
