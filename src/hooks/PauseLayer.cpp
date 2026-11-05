@@ -17,7 +17,7 @@ class $modify(ScarletUtilsPauseLayerHook, PauseLayer) {
             this,
             menu_selector(ScarletUtilsPauseLayerHook::onButton)
         );
-        btn->setID("scarlet-utils-button"_spr);
+        btn->setID("malik-utils-button"_spr);
 
         rightButtonMenu->addChild(btn);
         rightButtonMenu->updateLayout();
